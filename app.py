@@ -5,6 +5,7 @@ import streamlit as st
 
 from politicianstockai import storage
 from politicianstockai.pipeline import run_pipeline
+from politicianstockai.research import generate_report
 
 st.set_page_config(page_title="PoliticianStockAI", layout="wide")
 
@@ -52,6 +53,17 @@ else:
     ticker = st.selectbox("Select a ticker", flagged_df["Ticker"].tolist())
 
     if ticker:
+        if st.button("Force re-research", help="Bypass the 24h cache and regenerate this report now"):
+            selected_flag = next(f for f in flagged if f.ticker == ticker)
+            with st.spinner(f"Re-researching {ticker}..."):
+                try:
+                    new_report = asyncio.run(generate_report(selected_flag))
+                    storage.insert_report(new_report)
+                    st.success("Report regenerated.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Re-research failed: {e}")
+
         history = storage.get_report_history(ticker)
         if not history:
             st.warning("No AI report generated yet for this ticker.")
