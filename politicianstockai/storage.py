@@ -54,9 +54,14 @@ CREATE TABLE IF NOT EXISTS daily_summaries (
     date TEXT NOT NULL UNIQUE,
     summary TEXT NOT NULL,
     highlighted_tickers TEXT NOT NULL,
+    sources TEXT NOT NULL DEFAULT '[]',
     generated_at TEXT NOT NULL
 );
 """
+
+MIGRATIONS = [
+    "ALTER TABLE daily_summaries ADD COLUMN sources TEXT NOT NULL DEFAULT '[]'",
+]
 
 
 @contextmanager
@@ -83,6 +88,11 @@ def _as_dicts(cursor) -> list[dict]:
 def init_db(db_path: str | None = None) -> None:
     with _connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        for migration in MIGRATIONS:
+            try:
+                conn.execute(migration)
+            except Exception:
+                pass  # column already exists
 
 
 def insert_trades(trades: list[Trade], db_path: str | None = None) -> int:
@@ -253,6 +263,7 @@ def get_summary_for_date(date: str, db_path: str | None = None) -> DailySummary 
         date=row["date"],
         summary=row["summary"],
         highlighted_tickers=json.loads(row["highlighted_tickers"]),
+        sources=json.loads(row.get("sources") or "[]"),
         generated_at=row["generated_at"],
     )
 
@@ -260,12 +271,13 @@ def get_summary_for_date(date: str, db_path: str | None = None) -> DailySummary 
 def insert_daily_summary(summary: DailySummary, db_path: str | None = None) -> None:
     with _connect(db_path) as conn:
         conn.execute(
-            """INSERT OR REPLACE INTO daily_summaries (date, summary, highlighted_tickers, generated_at)
-               VALUES (?, ?, ?, ?)""",
+            """INSERT OR REPLACE INTO daily_summaries (date, summary, highlighted_tickers, sources, generated_at)
+               VALUES (?, ?, ?, ?, ?)""",
             (
                 summary.date,
                 summary.summary,
                 json.dumps(summary.highlighted_tickers),
+                json.dumps(summary.sources),
                 summary.generated_at.isoformat(),
             ),
         )
@@ -284,6 +296,7 @@ def get_summary_history(limit: int = 14, db_path: str | None = None) -> list[Dai
             date=r["date"],
             summary=r["summary"],
             highlighted_tickers=json.loads(r["highlighted_tickers"]),
+            sources=json.loads(r.get("sources") or "[]"),
             generated_at=r["generated_at"],
         )
         for r in rows

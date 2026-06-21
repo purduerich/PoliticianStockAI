@@ -25,21 +25,24 @@ async def run_pipeline() -> list[FlaggedTicker]:
     storage.insert_flagged_tickers(flagged)
     logger.info("flagged %d tickers", len(flagged))
 
-    today = datetime.now(timezone.utc).date().isoformat()
-    if storage.get_summary_for_date(today) is None:
-        summary = await generate_daily_summary(flagged, len(trades))
-        storage.insert_daily_summary(summary)
-        logger.info("generated daily summary for %s", today)
-    else:
-        logger.info("daily summary for %s already cached", today)
-
+    reports_by_ticker = {}
     for flag in flagged:
         cached = storage.get_cached_report(flag.ticker, max_age_hours=REPORT_FRESHNESS_HOURS)
         if cached is not None:
             logger.info("skipping %s, fresh report cached", flag.ticker)
+            reports_by_ticker[flag.ticker] = cached
             continue
         report = await generate_report(flag)
         storage.insert_report(report)
         logger.info("generated report for %s", flag.ticker)
+        reports_by_ticker[flag.ticker] = report
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    if storage.get_summary_for_date(today) is None:
+        summary = await generate_daily_summary(flagged, len(trades), reports_by_ticker)
+        storage.insert_daily_summary(summary)
+        logger.info("generated daily summary for %s", today)
+    else:
+        logger.info("daily summary for %s already cached", today)
 
     return storage.get_latest_flags()

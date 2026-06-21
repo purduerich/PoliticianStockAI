@@ -46,4 +46,5 @@ class DailySummary(BaseModel):
     date: str
     summary: str
     highlighted_tickers: list[str]
+    sources: list[str]
     generated_at: datetime

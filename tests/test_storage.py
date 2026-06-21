@@ -101,7 +101,7 @@ def test_daily_summary_round_trip(db_path):
 
     summary = DailySummary(
         date="2026-06-21", summary="Quiet day overall.", highlighted_tickers=["NVDA", "AAPL"],
-        generated_at=datetime.now(timezone.utc),
+        sources=["https://example.com/a"], generated_at=datetime.now(timezone.utc),
     )
     storage.insert_daily_summary(summary, db_path)
 
@@ -109,36 +109,67 @@ def test_daily_summary_round_trip(db_path):
     assert fetched is not None
     assert fetched.summary == "Quiet day overall."
     assert fetched.highlighted_tickers == ["NVDA", "AAPL"]
+    assert fetched.sources == ["https://example.com/a"]
 
 
 def test_daily_summary_upserts_on_date(db_path):
     first = DailySummary(
         date="2026-06-21", summary="First version.", highlighted_tickers=[],
-        generated_at=datetime.now(timezone.utc),
+        sources=[], generated_at=datetime.now(timezone.utc),
     )
     second = DailySummary(
         date="2026-06-21", summary="Updated version.", highlighted_tickers=["TSLA"],
-        generated_at=datetime.now(timezone.utc),
+        sources=["https://example.com/b"], generated_at=datetime.now(timezone.utc),
     )
     storage.insert_daily_summary(first, db_path)
     storage.insert_daily_summary(second, db_path)
 
     fetched = storage.get_summary_for_date("2026-06-21", db_path)
     assert fetched.summary == "Updated version."
+    assert fetched.sources == ["https://example.com/b"]
     assert len(storage.get_summary_history(db_path=db_path)) == 1
 
 
 def test_daily_summary_history_ordered_desc(db_path):
     older = DailySummary(
         date="2026-06-19", summary="day 1", highlighted_tickers=[],
-        generated_at=datetime.now(timezone.utc),
+        sources=[], generated_at=datetime.now(timezone.utc),
     )
     newer = DailySummary(
         date="2026-06-21", summary="day 3", highlighted_tickers=[],
-        generated_at=datetime.now(timezone.utc),
+        sources=[], generated_at=datetime.now(timezone.utc),
     )
     storage.insert_daily_summary(older, db_path)
     storage.insert_daily_summary(newer, db_path)
 
     history = storage.get_summary_history(db_path=db_path)
     assert [s.date for s in history] == ["2026-06-21", "2026-06-19"]
+
+
+def test_daily_summary_migration_backfills_sources_column(db_path):
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("DROP TABLE daily_summaries")
+    conn.execute(
+        """CREATE TABLE daily_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL UNIQUE,
+            summary TEXT NOT NULL,
+            highlighted_tickers TEXT NOT NULL,
+            generated_at TEXT NOT NULL
+        )"""
+    )
+    conn.execute(
+        "INSERT INTO daily_summaries (date, summary, highlighted_tickers, generated_at) VALUES (?, ?, ?, ?)",
+        ("2026-06-20", "old-schema row", "[]", datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+    storage.init_db(db_path)
+
+    fetched = storage.get_summary_for_date("2026-06-20", db_path)
+    assert fetched is not None
+    assert fetched.summary == "old-schema row"
+    assert fetched.sources == []

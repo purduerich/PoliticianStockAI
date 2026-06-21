@@ -40,6 +40,10 @@ else:
                     if st.button(ticker, key=f"jump_{ticker}"):
                         st.session_state["selected_ticker"] = ticker
                         st.rerun()
+        if todays_summary.sources:
+            st.markdown("**Sources:**")
+            for source in todays_summary.sources:
+                st.markdown(f"- [{source}]({source})")
         st.caption(f"Generated at {todays_summary.generated_at}")
 
 with st.expander("Previous summaries"):
