@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from politicianstockai import storage
-from politicianstockai.models import FlaggedTicker, StockReport, Trade
+from politicianstockai.models import DailySummary, FlaggedTicker, StockReport, Trade
 
 
 @pytest.fixture
@@ -94,3 +94,51 @@ def test_report_history_ordered_desc(db_path):
 
     history = storage.get_report_history("NVDA", db_path)
     assert [r.summary for r in history] == ["new", "old"]
+
+
+def test_daily_summary_round_trip(db_path):
+    assert storage.get_summary_for_date("2026-06-21", db_path) is None
+
+    summary = DailySummary(
+        date="2026-06-21", summary="Quiet day overall.", highlighted_tickers=["NVDA", "AAPL"],
+        generated_at=datetime.now(timezone.utc),
+    )
+    storage.insert_daily_summary(summary, db_path)
+
+    fetched = storage.get_summary_for_date("2026-06-21", db_path)
+    assert fetched is not None
+    assert fetched.summary == "Quiet day overall."
+    assert fetched.highlighted_tickers == ["NVDA", "AAPL"]
+
+
+def test_daily_summary_upserts_on_date(db_path):
+    first = DailySummary(
+        date="2026-06-21", summary="First version.", highlighted_tickers=[],
+        generated_at=datetime.now(timezone.utc),
+    )
+    second = DailySummary(
+        date="2026-06-21", summary="Updated version.", highlighted_tickers=["TSLA"],
+        generated_at=datetime.now(timezone.utc),
+    )
+    storage.insert_daily_summary(first, db_path)
+    storage.insert_daily_summary(second, db_path)
+
+    fetched = storage.get_summary_for_date("2026-06-21", db_path)
+    assert fetched.summary == "Updated version."
+    assert len(storage.get_summary_history(db_path=db_path)) == 1
+
+
+def test_daily_summary_history_ordered_desc(db_path):
+    older = DailySummary(
+        date="2026-06-19", summary="day 1", highlighted_tickers=[],
+        generated_at=datetime.now(timezone.utc),
+    )
+    newer = DailySummary(
+        date="2026-06-21", summary="day 3", highlighted_tickers=[],
+        generated_at=datetime.now(timezone.utc),
+    )
+    storage.insert_daily_summary(older, db_path)
+    storage.insert_daily_summary(newer, db_path)
+
+    history = storage.get_summary_history(db_path=db_path)
+    assert [s.date for s in history] == ["2026-06-21", "2026-06-19"]

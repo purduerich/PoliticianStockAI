@@ -40,3 +40,10 @@ class StockReport(BaseModel):
     sources: list[str]
     confidence: Literal["low", "medium", "high"]
     generated_at: datetime
+
+
+class DailySummary(BaseModel):
+    date: str
+    summary: str
+    highlighted_tickers: list[str]
+    generated_at: datetime

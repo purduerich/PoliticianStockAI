@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
@@ -16,6 +17,35 @@ st.caption(
     "Scans recent congressional stock trading disclosures, flags unusual activity, "
     "and uses AI research to explain what's likely driving it."
 )
+
+today = datetime.now(timezone.utc).date().isoformat()
+todays_summary = storage.get_summary_for_date(today)
+
+st.subheader("Today's Summary")
+if todays_summary is None:
+    st.info("No summary yet for today — click 'Refresh / Scan' below.")
+else:
+    with st.container(border=True):
+        st.write(todays_summary.summary)
+        if todays_summary.highlighted_tickers:
+            st.caption("Worth investigating first:")
+            cols = st.columns(len(todays_summary.highlighted_tickers))
+            for col, ticker in zip(cols, todays_summary.highlighted_tickers):
+                with col:
+                    if st.button(ticker, key=f"jump_{ticker}"):
+                        st.session_state["selected_ticker"] = ticker
+                        st.rerun()
+        st.caption(f"Generated at {todays_summary.generated_at}")
+
+with st.expander("Previous summaries"):
+    history = storage.get_summary_history()
+    past_summaries = [s for s in history if s.date != today]
+    if not past_summaries:
+        st.caption("No previous summaries yet.")
+    else:
+        for s in past_summaries:
+            st.markdown(f"**{s.date}**")
+            st.write(s.summary)
 
 col1, col2 = st.columns([1, 5])
 with col1:
@@ -50,7 +80,10 @@ else:
     st.bar_chart(flagged_df.set_index("Ticker")["Score"])
 
     st.subheader("Ticker Detail")
-    ticker = st.selectbox("Select a ticker", flagged_df["Ticker"].tolist())
+    ticker_options = flagged_df["Ticker"].tolist()
+    preselected = st.session_state.pop("selected_ticker", None)
+    default_index = ticker_options.index(preselected) if preselected in ticker_options else 0
+    ticker = st.selectbox("Select a ticker", ticker_options, index=default_index)
 
     if ticker:
         if st.button("Force re-research", help="Bypass the 24h cache and regenerate this report now"):

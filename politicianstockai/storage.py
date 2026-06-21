@@ -7,7 +7,7 @@ from pathlib import Path
 import libsql
 
 from politicianstockai.config import get_settings
-from politicianstockai.models import FlaggedTicker, StockReport, Trade
+from politicianstockai.models import DailySummary, FlaggedTicker, StockReport, Trade
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS trades (
@@ -48,6 +48,14 @@ CREATE TABLE IF NOT EXISTS reports (
     generated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_report_ticker_time ON reports(ticker, generated_at);
+
+CREATE TABLE IF NOT EXISTS daily_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL UNIQUE,
+    summary TEXT NOT NULL,
+    highlighted_tickers TEXT NOT NULL,
+    generated_at TEXT NOT NULL
+);
 """
 
 
@@ -229,6 +237,53 @@ def get_report_history(ticker: str, db_path: str | None = None) -> list[StockRep
             likely_drivers=json.loads(r["likely_drivers"]),
             sources=json.loads(r["sources"]),
             confidence=r["confidence"],
+            generated_at=r["generated_at"],
+        )
+        for r in rows
+    ]
+
+
+def get_summary_for_date(date: str, db_path: str | None = None) -> DailySummary | None:
+    with _connect(db_path) as conn:
+        rows = _as_dicts(conn.execute("SELECT * FROM daily_summaries WHERE date = ?", (date,)))
+    if not rows:
+        return None
+    row = rows[0]
+    return DailySummary(
+        date=row["date"],
+        summary=row["summary"],
+        highlighted_tickers=json.loads(row["highlighted_tickers"]),
+        generated_at=row["generated_at"],
+    )
+
+
+def insert_daily_summary(summary: DailySummary, db_path: str | None = None) -> None:
+    with _connect(db_path) as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO daily_summaries (date, summary, highlighted_tickers, generated_at)
+               VALUES (?, ?, ?, ?)""",
+            (
+                summary.date,
+                summary.summary,
+                json.dumps(summary.highlighted_tickers),
+                summary.generated_at.isoformat(),
+            ),
+        )
+
+
+def get_summary_history(limit: int = 14, db_path: str | None = None) -> list[DailySummary]:
+    with _connect(db_path) as conn:
+        rows = _as_dicts(
+            conn.execute(
+                "SELECT * FROM daily_summaries ORDER BY date DESC LIMIT ?",
+                (limit,),
+            )
+        )
+    return [
+        DailySummary(
+            date=r["date"],
+            summary=r["summary"],
+            highlighted_tickers=json.loads(r["highlighted_tickers"]),
             generated_at=r["generated_at"],
         )
         for r in rows

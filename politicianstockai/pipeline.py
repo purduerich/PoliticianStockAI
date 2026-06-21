@@ -1,6 +1,8 @@
 import logging
+from datetime import datetime, timezone
 
 from politicianstockai import storage
+from politicianstockai.daily_summary import generate_daily_summary
 from politicianstockai.fmp_client import fetch_latest_trades
 from politicianstockai.models import FlaggedTicker
 from politicianstockai.patterns import run_all_flags
@@ -22,6 +24,14 @@ async def run_pipeline() -> list[FlaggedTicker]:
     flagged = run_all_flags(history)
     storage.insert_flagged_tickers(flagged)
     logger.info("flagged %d tickers", len(flagged))
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    if storage.get_summary_for_date(today) is None:
+        summary = await generate_daily_summary(flagged, len(trades))
+        storage.insert_daily_summary(summary)
+        logger.info("generated daily summary for %s", today)
+    else:
+        logger.info("daily summary for %s already cached", today)
 
     for flag in flagged:
         cached = storage.get_cached_report(flag.ticker, max_age_hours=REPORT_FRESHNESS_HOURS)
