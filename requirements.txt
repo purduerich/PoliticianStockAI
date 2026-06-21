@@ -1,0 +1,6 @@
+pydantic-ai
+streamlit
+httpx
+pandas
+python-dotenv
+pydantic
