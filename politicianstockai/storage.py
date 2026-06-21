@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import libsql
+
 from politicianstockai.config import get_settings
 from politicianstockai.models import FlaggedTicker, StockReport, Trade
 
@@ -51,15 +53,23 @@ CREATE INDEX IF NOT EXISTS idx_report_ticker_time ON reports(ticker, generated_a
 
 @contextmanager
 def _connect(db_path: str | None = None):
-    path = db_path or get_settings().db_path
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
+    settings = get_settings()
+    if db_path is None and settings.turso_database_url:
+        conn = libsql.connect(database=settings.turso_database_url, auth_token=settings.turso_auth_token)
+    else:
+        path = db_path or settings.db_path
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(path)
     try:
         yield conn
         conn.commit()
     finally:
         conn.close()
+
+
+def _as_dicts(cursor) -> list[dict]:
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
 def init_db(db_path: str | None = None) -> None:
@@ -102,10 +112,12 @@ def insert_trades(trades: list[Trade], db_path: str | None = None) -> int:
 def get_recent_trades(window_days: int = 60, db_path: str | None = None) -> list[Trade]:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).date().isoformat()
     with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT * FROM trades WHERE transaction_date >= ? ORDER BY transaction_date DESC",
-            (cutoff,),
-        ).fetchall()
+        rows = _as_dicts(
+            conn.execute(
+                "SELECT * FROM trades WHERE transaction_date >= ? ORDER BY transaction_date DESC",
+                (cutoff,),
+            )
+        )
     return [
         Trade(
             chamber=r["chamber"],
@@ -141,13 +153,15 @@ def insert_flagged_tickers(flagged: list[FlaggedTicker], db_path: str | None = N
 
 def get_latest_flags(db_path: str | None = None) -> list[FlaggedTicker]:
     with _connect(db_path) as conn:
-        rows = conn.execute(
-            """SELECT t1.* FROM flagged_tickers t1
-               WHERE t1.flagged_at = (
-                   SELECT MAX(t2.flagged_at) FROM flagged_tickers t2 WHERE t2.ticker = t1.ticker
-               )
-               ORDER BY t1.score DESC"""
-        ).fetchall()
+        rows = _as_dicts(
+            conn.execute(
+                """SELECT t1.* FROM flagged_tickers t1
+                   WHERE t1.flagged_at = (
+                       SELECT MAX(t2.flagged_at) FROM flagged_tickers t2 WHERE t2.ticker = t1.ticker
+                   )
+                   ORDER BY t1.score DESC"""
+            )
+        )
     return [
         FlaggedTicker(
             ticker=r["ticker"],
@@ -164,13 +178,16 @@ def get_latest_flags(db_path: str | None = None) -> list[FlaggedTicker]:
 def get_cached_report(ticker: str, max_age_hours: int = 24, db_path: str | None = None) -> StockReport | None:
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
     with _connect(db_path) as conn:
-        row = conn.execute(
-            """SELECT * FROM reports WHERE ticker = ? AND generated_at >= ?
-               ORDER BY generated_at DESC LIMIT 1""",
-            (ticker, cutoff),
-        ).fetchone()
-    if row is None:
+        rows = _as_dicts(
+            conn.execute(
+                """SELECT * FROM reports WHERE ticker = ? AND generated_at >= ?
+                   ORDER BY generated_at DESC LIMIT 1""",
+                (ticker, cutoff),
+            )
+        )
+    if not rows:
         return None
+    row = rows[0]
     return StockReport(
         ticker=row["ticker"],
         summary=row["summary"],
@@ -199,10 +216,12 @@ def insert_report(report: StockReport, db_path: str | None = None) -> None:
 
 def get_report_history(ticker: str, db_path: str | None = None) -> list[StockReport]:
     with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT * FROM reports WHERE ticker = ? ORDER BY generated_at DESC",
-            (ticker,),
-        ).fetchall()
+        rows = _as_dicts(
+            conn.execute(
+                "SELECT * FROM reports WHERE ticker = ? ORDER BY generated_at DESC",
+                (ticker,),
+            )
+        )
     return [
         StockReport(
             ticker=r["ticker"],

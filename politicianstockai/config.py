@@ -22,6 +22,8 @@ class Settings:
     fmp_api_key: str
     db_path: str
     research_model: str
+    turso_database_url: str
+    turso_auth_token: str
 
 
 @lru_cache
@@ -32,4 +34,6 @@ def get_settings() -> Settings:
         fmp_api_key=os.environ.get("FMP_API_KEY", ""),
         db_path=os.environ.get("DB_PATH", "./data/politicianstockai.db"),
         research_model=os.environ.get("RESEARCH_MODEL", "openai-chat:gpt-4o"),
+        turso_database_url=os.environ.get("TURSO_DATABASE_URL", ""),
+        turso_auth_token=os.environ.get("TURSO_AUTH_TOKEN", ""),
     )
