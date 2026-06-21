@@ -86,7 +86,6 @@ else:
         "occurred, not when they were disclosed or when this scan ran."
     )
     st.dataframe(flagged_df, use_container_width=True, hide_index=True)
-    st.bar_chart(flagged_df.set_index("Ticker")["Score"])
 
     st.subheader("Ticker Detail")
     ticker_options = flagged_df["Ticker"].tolist()
