@@ -1,4 +1,4 @@
-# PoliticianStockAI — Architecture
+# Politician Stock Trade Analyzer — Architecture
 
 ## Summary
 
@@ -7,6 +7,10 @@ trading patterns (high volume, cross-politician overlap, cross-chamber overlap, 
 skew, unusual volume spikes), and uses web research (OpenAI + Serper) to explain what's
 likely driving the activity for flagged tickers. Results are surfaced in a Streamlit
 dashboard, refreshed on demand via a "Refresh / Scan" button.
+
+Note: each trade has a transaction date (when it occurred) and a disclosure date (when
+it was filed, up to 45 days later by law) — the app and its UI always frame results as
+"this scan" rather than implying the underlying trades happened "today."
 
 ## Current Architecture
 

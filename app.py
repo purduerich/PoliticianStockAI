@@ -8,22 +8,27 @@ from politicianstockai import storage
 from politicianstockai.pipeline import run_pipeline
 from politicianstockai.research import generate_report
 
-st.set_page_config(page_title="PoliticianStockAI", layout="wide")
+st.set_page_config(page_title="Politician Stock Trade Analyzer", layout="wide")
 
 storage.init_db()
 
-st.title("PoliticianStockAI")
+st.title("Politician Stock Trade Analyzer")
 st.caption(
-    "Scans recent congressional stock trading disclosures, flags unusual activity, "
-    "and uses AI research to explain what's likely driving it."
+    "Scans the most recently disclosed congressional stock trading activity, flags "
+    "unusual patterns, and uses AI research to explain what's likely driving it. "
+    "Note: each trade has a transaction date (when it actually happened) and a "
+    "disclosure date (when it was publicly filed) — by law, members of Congress can "
+    "file up to 45 days after a trade, so disclosures reviewed in a given scan may "
+    "reflect trades from weeks earlier, not necessarily from today or even a recent "
+    "trading day."
 )
 
 today = datetime.now(timezone.utc).date().isoformat()
 todays_summary = storage.get_summary_for_date(today)
 
-st.subheader("Today's Summary")
+st.subheader("Latest Scan Summary")
 if todays_summary is None:
-    st.info("No summary yet for today — click 'Refresh / Scan' below.")
+    st.info("No summary yet for today's scan — click 'Refresh / Scan' below.")
 else:
     with st.container(border=True):
         st.write(todays_summary.summary)
@@ -68,7 +73,7 @@ else:
                 "Ticker": f.ticker,
                 "Score": f.score,
                 "Reasons": "; ".join(f.reasons),
-                "Window": f"{f.window_start} to {f.window_end}",
+                "Transaction Date Window": f"{f.window_start} to {f.window_end}",
                 "Flagged At": f.flagged_at,
             }
             for f in flagged
@@ -76,6 +81,10 @@ else:
     ).sort_values("Score", ascending=False)
 
     st.subheader("Flagged Tickers")
+    st.caption(
+        "\"Transaction Date Window\" covers when the underlying trades actually "
+        "occurred, not when they were disclosed or when this scan ran."
+    )
     st.dataframe(flagged_df, use_container_width=True, hide_index=True)
     st.bar_chart(flagged_df.set_index("Ticker")["Score"])
 
@@ -116,5 +125,9 @@ else:
         trades = [t for t in storage.get_recent_trades(window_days=90) if t.symbol == ticker]
         if trades:
             st.markdown("**Underlying trades:**")
+            st.caption(
+                "transaction_date is when the trade occurred; disclosure_date is when "
+                "it was publicly filed (by law, up to 45 days later)."
+            )
             trades_df = pd.DataFrame([t.model_dump() for t in trades])
             st.dataframe(trades_df, use_container_width=True, hide_index=True)
