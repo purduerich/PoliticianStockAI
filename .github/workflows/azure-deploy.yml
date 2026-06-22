@@ -1,0 +1,35 @@
+name: Deploy to Azure App Service
+
+# Manual trigger only — run from the Actions tab when you're ready to deploy.
+#
+# One-time setup required in Azure / GitHub before this can run:
+#   1. Create an Azure App Service (Linux, Python 3.12 runtime stack).
+#   2. In the App Service's Configuration > General settings, set the
+#      Startup Command to: bash startup.sh
+#   3. In the App Service's Configuration > Application settings, add:
+#      OPENAI_API_KEY, SERPER_API_KEY, FMP_API_KEY, TURSO_DATABASE_URL,
+#      TURSO_AUTH_TOKEN (and optionally RESEARCH_MODEL).
+#   4. Download the App Service's publish profile (Overview > Get publish
+#      profile) and save it as a GitHub repo secret named
+#      AZURE_WEBAPP_PUBLISH_PROFILE.
+#   5. Update AZURE_WEBAPP_NAME below to match your App Service name.
+
+on:
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: politician-stock-ai
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
